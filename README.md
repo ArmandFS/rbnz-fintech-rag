@@ -250,6 +250,8 @@ CHUNK_OVERLAP=200
 RETRIEVAL_TOP_K=5
 
 LLM_PROVIDER=gemini
+LLM_MAX_RETRIES=3
+LLM_RETRY_BASE_DELAY=2.0
 GEMINI_API_KEY=your_google_api_key_here
 GEMINI_MODEL=gemini-2.5-flash-lite
 ```
@@ -334,6 +336,8 @@ venv/bin/python scripts/query_local.py "What is the OCR outlook?"
 ```
 
 This requires `LLM_PROVIDER` and the relevant API key to be configured.
+
+If Gemini returns a temporary `503 Service Unavailable` or similar transient error, the LLM layer retries with exponential backoff before failing.
 
 ## Resetting The Index
 

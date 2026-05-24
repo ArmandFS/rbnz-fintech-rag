@@ -1,3 +1,5 @@
+import time
+
 import httpx
 
 from config import get_settings
@@ -78,13 +80,13 @@ def answer_with_gemini(query: str, context: str) -> str:
         },
     }
 
-    response = httpx.post(
+    response = post_with_retries(
         url,
-        params={"key": settings.gemini_api_key},
+        headers={"x-goog-api-key": settings.gemini_api_key},
         json=payload,
         timeout=60,
+        error_message="Gemini generation request failed",
     )
-    response.raise_for_status()
     data = response.json()
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
@@ -109,12 +111,64 @@ def answer_with_openai_compatible(
         "temperature": 0.2,
         "max_tokens": 800,
     }
-    response = httpx.post(
+    response = post_with_retries(
         base_url,
         headers={"Authorization": f"Bearer {api_key}"},
         json=payload,
         timeout=60,
+        error_message="OpenAI-compatible generation request failed",
     )
-    response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"]
+
+
+def post_with_retries(
+    url: str,
+    *,
+    headers: dict[str, str],
+    json: dict,
+    timeout: int,
+    error_message: str,
+) -> httpx.Response:
+    settings = get_settings()
+    retryable_statuses = {429, 500, 502, 503, 504}
+    last_response: httpx.Response | None = None
+
+    for attempt in range(settings.llm_max_retries + 1):
+        try:
+            response = httpx.post(url, headers=headers, json=json, timeout=timeout)
+        except httpx.HTTPError as exc:
+            if attempt >= settings.llm_max_retries:
+                raise RuntimeError(f"{error_message}: {exc}") from exc
+            sleep_before_retry(attempt)
+            continue
+
+        if response.status_code not in retryable_statuses:
+            raise_clean_http_error(response, error_message)
+            return response
+
+        last_response = response
+        if attempt >= settings.llm_max_retries:
+            break
+        sleep_before_retry(attempt)
+
+    if last_response is not None:
+        raise_clean_http_error(last_response, error_message)
+
+    raise RuntimeError(f"{error_message}: request failed before receiving a response")
+
+
+def sleep_before_retry(attempt: int) -> None:
+    settings = get_settings()
+    delay = settings.llm_retry_base_delay * (2**attempt)
+    time.sleep(delay)
+
+
+def raise_clean_http_error(response: httpx.Response, message: str) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = response.text[:500]
+        raise RuntimeError(
+            f"{message}: HTTP {response.status_code}. Response body: {detail}"
+        ) from exc
