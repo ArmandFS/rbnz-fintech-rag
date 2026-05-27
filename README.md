@@ -284,7 +284,7 @@ Possible use cases:
 
 ### Phase 1: Core RAG Pipeline
 
-Status: in progress.
+Status: currently in progress.
 
 Current focus:
 
