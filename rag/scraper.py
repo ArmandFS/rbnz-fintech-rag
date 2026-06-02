@@ -31,7 +31,13 @@ import requests
 
 DEFAULT_OUTPUT_DIR = Path("documents") / "rbnz"
 MANIFEST_FILE_NAME = "manifest.json"
-USER_AGENT = "rbnz-fintech-rag/0.1 (+https://github.com/ArmandFS/rbnz-fintech-rag)"
+REQUEST_MAX_RETRIES = 3
+REQUEST_RETRY_BASE_DELAY = 1.0
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0 Safari/537.36 rbnz-fintech-rag/0.1"
+)
 
 
 @dataclass(frozen=True)
@@ -69,7 +75,7 @@ COLLECTIONS: dict[str, CollectionConfig] = {
         output_subdir="mps",
         seed_urls=(
             "https://www.rbnz.govt.nz/monetary-policy/monetary-policy-statement",
-            "https://www.rbnz.govt.nz/hub/publications/monetary-policy-statement",
+            "https://www.rbnz.govt.nz/monetary-policy/monetary-policy-statement/monetary-policy-statement-filtered-listing-page",
         ),
         page_keywords=("monetary-policy-statement", "monetary policy statement"),
         pdf_keywords=("monetary policy statement", "mps", "download the mps"),
@@ -79,6 +85,7 @@ COLLECTIONS: dict[str, CollectionConfig] = {
         output_subdir="financial_stability",
         seed_urls=(
             "https://www.rbnz.govt.nz/financial-stability/financial-stability-report",
+            "https://www.rbnz.govt.nz/financial-stability/financial-stability-report/financial-stability-reports",
             "https://www.rbnz.govt.nz/hub/publications/financial-stability-report",
         ),
         page_keywords=("financial-stability-report", "financial stability report"),
@@ -88,7 +95,8 @@ COLLECTIONS: dict[str, CollectionConfig] = {
         name="annual_report",
         output_subdir="annual_report",
         seed_urls=(
-            "https://www.rbnz.govt.nz/hub/publications/corporate-publications/annual-reports",
+            "https://www.rbnz.govt.nz/about-us/corporate-publications",
+            "https://www.rbnz.govt.nz/hub/publications/corporate-publications/annual-reports/annual-report-2025",
         ),
         page_keywords=("annual-report", "annual report"),
         pdf_keywords=("annual report",),
@@ -315,6 +323,10 @@ def discover_candidate_pages(
             continue
 
         pages.append(url)
+        for result_url in discover_coveo_result_pages(session, html, max_results=max_pages):
+            if result_url not in seen and result_url not in queue and page_matches_collection(result_url, "", collection):
+                queue.append(result_url)
+
         parser = parse_links(html)
         for link in parser.links:
             absolute_url = normalise_url(urljoin(url, link.url))
@@ -326,6 +338,68 @@ def discover_candidate_pages(
                 queue.append(absolute_url)
 
     return pages
+
+
+def discover_coveo_result_pages(
+    session: requests.Session,
+    html: str,
+    *,
+    max_results: int,
+) -> list[str]:
+    config = extract_coveo_config(html)
+    if not config:
+        return []
+
+    payload = {
+        "q": "",
+        "cq": config["data_expression"],
+        "firstResult": 0,
+        "numberOfResults": max_results,
+        "sortCriteria": "@computedsortdate descending",
+        "searchHub": config["search_hub"],
+    }
+    response = request_with_retries(
+        session,
+        "POST",
+        config["rest_endpoint"],
+        headers={
+            "Authorization": f"Bearer {config['token']}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    result_pages = []
+    for result in response.json().get("results", []):
+        url = result.get("clickUri")
+        raw = result.get("raw", {})
+        file_type = str(raw.get("computedz95xfiletype", "")).lower()
+        if url and file_type != "pdf":
+            result_pages.append(normalise_url(url))
+    return result_pages
+
+
+def extract_coveo_config(html: str) -> dict[str, str] | None:
+    token_match = re.search(r'token:\s*"([^"]+)"', html)
+    endpoint_match = re.search(r'restEndpoint:\s*"([^"]+)"', html)
+    search_hub_match = re.search(r'searchHub:\s*"([^"]+)"', html)
+    data_expression_match = re.search(
+        r'dataExpression":\s*\[,\'([\s\S]*?)\'\]',
+        html,
+    )
+
+    if not all([token_match, endpoint_match, search_hub_match, data_expression_match]):
+        return None
+
+    data_expression = data_expression_match.group(1).replace("\\'", "'")
+    return {
+        "token": token_match.group(1),
+        "rest_endpoint": endpoint_match.group(1),
+        "search_hub": search_hub_match.group(1),
+        "data_expression": data_expression,
+    }
 
 
 def discover_pdf_candidates(
@@ -368,19 +442,23 @@ def discover_pdf_candidates(
 
 def build_session() -> requests.Session:
     session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT})
+    session.headers.update(
+        {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-NZ,en;q=0.9",
+        }
+    )
     return session
 
 
 def fetch_text(session: requests.Session, url: str) -> str:
-    response = session.get(url, timeout=30)
-    response.raise_for_status()
+    response = request_with_retries(session, "GET", url, timeout=30)
     return response.text
 
 
 def download_pdf(session: requests.Session, url: str, file_path: Path) -> None:
-    with session.get(url, stream=True, timeout=60) as response:
-        response.raise_for_status()
+    with request_with_retries(session, "GET", url, stream=True, timeout=60) as response:
         content_type = response.headers.get("content-type", "").lower()
         if "pdf" not in content_type and not url.lower().endswith(".pdf"):
             raise ValueError(f"Expected PDF response from {url}, got {content_type}")
@@ -389,6 +467,35 @@ def download_pdf(session: requests.Session, url: str, file_path: Path) -> None:
             for chunk in response.iter_content(chunk_size=1024 * 256):
                 if chunk:
                     file.write(chunk)
+
+
+def request_with_retries(
+    session: requests.Session,
+    method: str,
+    url: str,
+    **kwargs,
+) -> requests.Response:
+    retryable_statuses = {429, 500, 502, 503, 504}
+    last_response: requests.Response | None = None
+
+    for attempt in range(REQUEST_MAX_RETRIES + 1):
+        response = session.request(method, url, **kwargs)
+        if response.status_code not in retryable_statuses:
+            response.raise_for_status()
+            return response
+
+        last_response = response
+        if attempt >= REQUEST_MAX_RETRIES:
+            break
+
+        retry_after = response.headers.get("Retry-After")
+        delay = float(retry_after) if retry_after and retry_after.isdigit() else REQUEST_RETRY_BASE_DELAY * (2**attempt)
+        time.sleep(delay)
+
+    if last_response is not None:
+        last_response.raise_for_status()
+
+    raise RuntimeError(f"Request failed before receiving a response: {url}")
 
 
 def parse_links(html: str) -> LinkParser:
