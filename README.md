@@ -81,6 +81,10 @@ Supported hooks:
 - DeepSeek
 - OpenRouter-compatible models, including Qwen/Kimi-style workflows
 
+### Development Assistance
+
+This project may use GPT-5.6 Terra for higher-level architecture, debugging, and implementation planning during development.
+
 ### Backend API
 
 Planned:
