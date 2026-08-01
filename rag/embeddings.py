@@ -1,10 +1,10 @@
 from functools import lru_cache
 
-import httpx
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
 from config import get_settings
+from llm import post_with_retries
 
 
 @lru_cache
@@ -81,12 +81,12 @@ def embed_gemini_batch(texts: list[str]) -> list[list[float]]:
             for text in texts
         ]
     }
-    response = httpx.post(
+    response = post_with_retries(
         url,
         headers={"x-goog-api-key": settings.gemini_api_key},
         json=payload,
         timeout=90,
+        error_message="Gemini embedding request failed",
     )
-    response.raise_for_status()
     data = response.json()
     return [embedding["values"] for embedding in data["embeddings"]]

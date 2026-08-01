@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
 
     llm_provider: str = "none"
+    llm_max_retries: int = 3
+    llm_retry_base_delay: float = 2.0
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash-lite"
 
