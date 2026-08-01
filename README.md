@@ -44,14 +44,15 @@ Implemented:
 - Optional LLM answer generation.
 - Gemini embedding support.
 - Gemini, DeepSeek, and OpenRouter-compatible LLM hooks.
+- Automated RBNZ document discovery/download script.
 - CLI scripts for ingestion, querying, and index inspection.
+- Batch ingestion script for downloaded PDF collections.
 
 Not implemented yet:
 
 - FastAPI service wrapper.
 - Node.js backend API.
 - React frontend.
-- Automated RBNZ document scraping/acquisition.
 - Docker Compose for the full system.
 - Deployment.
 
@@ -122,9 +123,11 @@ Planned:
 │   ├── ingest.py
 │   ├── llm.py
 │   ├── retrieval.py
+│   ├── scraper.py
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── scripts/
+│       ├── ingest_batch.py
 │       ├── ingest_local.py
 │       ├── query_local.py
 │       └── show_index.py
@@ -230,6 +233,30 @@ Example collections:
 mps
 financial_stability
 annual_report
+```
+
+### Scrape RBNZ PDFs
+
+Dry-run PDF discovery:
+
+```bash
+venv/bin/python scraper.py --collection mps --dry-run --max-pages 10 --max-files 5
+```
+
+Download PDFs:
+
+```bash
+venv/bin/python scraper.py --all --max-files 5
+```
+
+### Batch-Ingest Downloaded PDFs
+
+```bash
+venv/bin/python scripts/ingest_batch.py --dry-run
+```
+
+```bash
+venv/bin/python scripts/ingest_batch.py
 ```
 
 ### Show Index Status

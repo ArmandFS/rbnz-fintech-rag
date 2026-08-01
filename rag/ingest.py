@@ -134,6 +134,7 @@ def ingest_document(
     for chunk, embedding in zip(chunks, embeddings, strict=True):
         chunk["embedding"] = embedding
 
+    settings = get_settings()
     document_id = insert_document(
         title=document_title,
         source=source,
@@ -143,11 +144,11 @@ def ingest_document(
         page_count=len(pages),
         metadata={
             "original_file_name": path.name,
-            "embedding_provider": get_settings().embedding_provider,
+            "embedding_provider": settings.embedding_provider,
             "embedding_model": (
-                get_settings().gemini_embedding_model
-                if get_settings().embedding_provider.lower() == "gemini"
-                else get_settings().embedding_model_name
+                settings.gemini_embedding_model
+                if settings.embedding_provider.lower() == "gemini"
+                else settings.embedding_model_name
             ),
         },
     )
