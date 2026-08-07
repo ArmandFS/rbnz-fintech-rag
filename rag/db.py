@@ -166,40 +166,57 @@ def insert_chunks(document_id: int, chunks: list[dict[str, Any]]) -> None:
 def search_chunks(
     *,
     query_embedding: list[float],
+    query_text: str | None = None,
     collection: str | None = None,
     top_k: int = 5,
+    lexical_weight: float = 0.0,
 ) -> list[dict[str, Any]]:
     filters = []
-    params: list[Any] = [query_embedding]
+    params: dict[str, Any] = {"embedding": query_embedding, "top_k": top_k}
 
     if collection:
-        filters.append("d.collection = %s")
-        params.append(collection)
+        filters.append("d.collection = %(collection)s")
+        params["collection"] = collection
 
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
-    params.extend([query_embedding, top_k])
+
+    if query_text and lexical_weight > 0:
+        lexical_score_sql = (
+            "ts_rank_cd(to_tsvector('english', c.text), plainto_tsquery('english', %(query_text)s), 32)"
+        )
+        params["query_text"] = query_text
+    else:
+        lexical_score_sql = "0.0"
+
+    vector_weight = 1 - lexical_weight
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 f"""
-                SELECT
-                    c.id AS chunk_id,
-                    c.chunk_index,
-                    c.page_number,
-                    c.text,
-                    c.metadata AS chunk_metadata,
-                    d.id AS document_id,
-                    d.title,
-                    d.source,
-                    d.collection,
-                    d.file_path,
-                    1 - (c.embedding <=> %s::vector) AS similarity
-                FROM chunks c
-                JOIN documents d ON d.id = c.document_id
-                {where_clause}
-                ORDER BY c.embedding <=> %s::vector
-                LIMIT %s
+                WITH scored AS (
+                    SELECT
+                        c.id AS chunk_id,
+                        c.chunk_index,
+                        c.page_number,
+                        c.text,
+                        c.metadata AS chunk_metadata,
+                        d.id AS document_id,
+                        d.title,
+                        d.source,
+                        d.collection,
+                        d.file_path,
+                        1 - (c.embedding <=> %(embedding)s::vector) AS similarity,
+                        {lexical_score_sql} AS lexical_score
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    {where_clause}
+                )
+                SELECT *,
+                    ({vector_weight} * similarity + {lexical_weight} * lexical_score) AS combined_score
+                FROM scored
+                ORDER BY combined_score DESC
+                LIMIT %(top_k)s
                 """,
                 params,
             )

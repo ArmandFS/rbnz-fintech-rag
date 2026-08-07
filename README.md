@@ -199,6 +199,8 @@ The `chunks` table stores the vector embedding in a pgvector column.
 
 `rag/retrieval.py` embeds the user query, searches pgvector for similar chunks, and returns the top matches.
 
+Retrieval uses hybrid ranking: pgvector cosine similarity is blended with a Postgres full-text keyword score (`ts_rank_cd`), controlled by `RETRIEVAL_LEXICAL_WEIGHT` (default `0.3`, `0` = pure vector search). This improves matches for queries with specific terms (like acronyms) that pure vector similarity can miss.
+
 It can either:
 
 - return retrieved chunks only, or
@@ -319,10 +321,13 @@ Status: currently in progress.
 
 Current focus:
 
-- Improve retrieval quality.
+- Improve source citation formatting.
+
+Done:
+
+- Improve retrieval quality (hybrid lexical + vector reranking).
 - Test Gemini embeddings.
 - Test Gemini-generated answers.
-- Improve source citation formatting.
 - Add basic evaluation questions.
 
 ### Phase 2: FastAPI RAG Service

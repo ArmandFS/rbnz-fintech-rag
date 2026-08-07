@@ -18,8 +18,10 @@ def retrieve_chunks(
     query_embedding = embed_query(query)
     return search_chunks(
         query_embedding=query_embedding,
+        query_text=query,
         collection=collection,
         top_k=top_k or settings.retrieval_top_k,
+        lexical_weight=settings.retrieval_lexical_weight,
     )
 
 

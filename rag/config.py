@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     chunk_size: int = 1200
     chunk_overlap: int = 200
     retrieval_top_k: int = 5
+    #weight given to keyword/full-text matching vs vector similarity when reranking; 0 = pure vector search
+    retrieval_lexical_weight: float = 0.3
 
     llm_provider: str = "none"
     llm_max_retries: int = 3
