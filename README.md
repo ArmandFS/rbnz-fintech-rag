@@ -47,10 +47,10 @@ Implemented:
 - Automated RBNZ document discovery/download script.
 - CLI scripts for ingestion, querying, and index inspection.
 - Batch ingestion script for downloaded PDF collections.
+- FastAPI service wrapper (`/health`, `/index`, `/ingest`, `/retrieve`).
 
 Not implemented yet:
 
-- FastAPI service wrapper.
 - Node.js backend API.
 - React frontend.
 - Docker Compose for the full system.
@@ -122,11 +122,13 @@ Planned:
 │   ├── embeddings.py
 │   ├── ingest.py
 │   ├── llm.py
+│   ├── main.py
 │   ├── retrieval.py
 │   ├── scraper.py
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── scripts/
+│       ├── evaluate_retrieval.py
 │       ├── ingest_batch.py
 │       ├── ingest_local.py
 │       ├── query_local.py
@@ -283,6 +285,50 @@ This requires `LLM_PROVIDER` and the relevant API key to be configured.
 
 If Gemini returns a temporary `503 Service Unavailable` or similar transient error, the LLM layer retries with exponential backoff before failing.
 
+## Run The API
+
+The core pipeline is also available as a FastAPI service.
+
+```bash
+venv/bin/uvicorn main:app --reload --port 8000
+```
+
+Health check:
+
+```bash
+curl localhost:8000/health
+```
+
+Index summary:
+
+```bash
+curl localhost:8000/index
+```
+
+Retrieve and generate an answer:
+
+```bash
+curl -X POST localhost:8000/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "What is the OCR outlook?"}'
+```
+
+Retrieve chunks only, skipping the LLM call:
+
+```bash
+curl -X POST localhost:8000/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "What is the OCR outlook?", "answer": false}'
+```
+
+Ingest a PDF by upload:
+
+```bash
+curl -X POST localhost:8000/ingest \
+  -F "file=@documents/MPS_Report_Feb2026.pdf" \
+  -F "collection=mps"
+```
+
 ## Resetting The Index
 
 Reset the database when changing embedding models.
@@ -317,11 +363,7 @@ Possible use cases:
 
 ### Phase 1: Core RAG Pipeline
 
-Status: currently in progress.
-
-Current focus:
-
-- Improve source citation formatting.
+Status: complete.
 
 Done:
 
@@ -329,14 +371,18 @@ Done:
 - Test Gemini embeddings.
 - Test Gemini-generated answers.
 - Add basic evaluation questions.
+- Improve source citation formatting.
 
 ### Phase 2: FastAPI RAG Service
 
-Planned:
+Status: complete.
+
+Done:
 
 - Add `rag/main.py`.
 - Expose `/ingest`.
-- Expose `/retrieve`.
+- Expose `/retrieve` (with an `answer: false` chunks-only mode).
+- Expose `/health` and `/index`.
 - Return structured JSON answers and source citations.
 
 ### Phase 3: Node.js API
