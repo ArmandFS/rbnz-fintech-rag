@@ -50,11 +50,12 @@ def retrieve_and_answer(
         "answer": answer,
         "sources": [
             {
+                "index": index,
                 "title": chunk["title"],
                 "page_number": chunk["page_number"],
                 "similarity": float(chunk["similarity"]),
                 "file_path": chunk["file_path"],
             }
-            for chunk in chunks
+            for index, chunk in enumerate(chunks, start=1)
         ],
     }
