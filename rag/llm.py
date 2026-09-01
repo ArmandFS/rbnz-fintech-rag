@@ -5,6 +5,8 @@ import httpx
 from config import get_settings
 
 
+# Demands [N] citations tied to retrieval.py's numbered context blocks; earlier
+# wording only asked for citations "when useful" and answers cited inconsistently.
 SYSTEM_PROMPT = """You are a careful fintech research assistant.
 Answer only from the supplied RBNZ context.
 The context is a numbered list of chunks, each starting with a bracket number like [1], [2].

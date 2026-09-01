@@ -7,7 +7,7 @@ from config import get_settings
 from llm import post_with_retries
 
 
-@lru_cache
+@lru_cache  # avoids reloading the model on every call once this runs inside a long-lived FastAPI process
 def get_embedding_model() -> SentenceTransformer:
     settings = get_settings()
     return SentenceTransformer(settings.embedding_model_name)

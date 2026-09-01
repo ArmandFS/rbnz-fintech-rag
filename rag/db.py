@@ -206,6 +206,9 @@ def search_chunks(
                         d.source,
                         d.collection,
                         d.file_path,
+                        -- Cosine similarity alone missed keyword-specific queries (e.g. "OCR"
+                        -- got diluted by topically-similar chunks), so a full-text lexical
+                        -- score is blended in below via lexical_weight.
                         1 - (c.embedding <=> %(embedding)s::vector) AS similarity,
                         {lexical_score_sql} AS lexical_score
                     FROM chunks c
